@@ -9,11 +9,11 @@ const PORT = process.env.PORT
 
 const Minio = require('minio');
 const minioClient = new Minio.Client({
-    endPoint: '127.0.0.1',
-    port: 9000,
+    endPoint: process.env.MINIO_ENDPOINT,
+    port: process.env.MINIO_PORT,
     useSSL: false,
-    accessKey: '5Bb9sJIvQN8JmaTprSf4',
-    secretKey: 'GI8wiTdJUAvq3u7XHL1MetidP2BCeerCO27vXefj'
+    accessKey: process.env.MINIO_ACCESS_KEY,
+    secretKey: process.env.MINIO_SECRET_KEY
 })
 
 const resolutions= ['480p', '720p', '1080p']
