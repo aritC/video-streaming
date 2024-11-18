@@ -1,51 +1,92 @@
 const express = require('express')
 const amqp = require('amqplib/callback_api');
 const app = express();
-const PORT = 3000
-let queueConnection = null ;
+const {randomPrefixGenerator} = require("./src/util/randomPrefixGenerator")
+
+require('dotenv').config()
+
+const PORT = process.env.PORT
+
+const Minio = require('minio');
+const minioClient = new Minio.Client({
+    endPoint: '127.0.0.1',
+    port: 9000,
+    useSSL: false,
+    accessKey: '5Bb9sJIvQN8JmaTprSf4',
+    secretKey: 'GI8wiTdJUAvq3u7XHL1MetidP2BCeerCO27vXefj'
+})
+
 const resolutions= ['480p', '720p', '1080p']
-
-amqp.connect('amqp://localhost', function(error0, connection) {
-    if (error0) {
-      throw error0;
-    }
-
-    queueConnection = connection;
-    console.log('Connected to Queue')
-});
-
-
 
 app.use(express.json());
 
-//TODO check auth for upload
-app.post('/api/upload', (req,res) => {
-    const { videoName } = req.body;
+// Queue setup utility
+async function setupQueue(channel, queueName) {
+    await channel.assertQueue(queueName, { durable: true });
+}
 
-    queueConnection.createChannel(function(error1, channel) {
-        if (error1) {
-            throw error1;
-          }
-          const queue = 'transcoder-queue';
-      
-          channel.assertQueue(queue, {
-            durable: false
-          });
+// TODO check auth
+app.post('/api/upload',async (req, res) => {
+        // Validate request body
+        const errors = validationResult(req);
+        if (!errors.isEmpty()) {
+            return res.status(400).json({ errors: errors.array() });
+        }
 
-          let data = {
-            videoName,
-            segmentLength: 10,
-            format:'hls'
-          }
-          
-          resolutions.forEach((resolution) => {
-            data = {...data , resolution}
-            console.log(" [x] Sent %s", JSON.stringify(data));
+        const { videoName } = req.body;
 
-            channel.sendToQueue(queue, Buffer.from(JSON.stringify(data)));
-          });
-    });
-})
+        try {
+            // Connect to RabbitMQ and create a channel
+            const connection = await amqp.connect(process.env.RABBITMQ_URL || 'amqp://localhost');
+            const channel = await connection.createChannel();
+
+            const queueName = 'transcoder-queue';
+            await setupQueue(channel, queueName);
+
+            const baseData = {
+                videoName,
+                segmentLength: 10,
+                format: 'hls',
+            };
+
+            for (const resolution of resolutions) {
+                const data = { ...baseData, resolution };
+                const message = JSON.stringify(data);
+
+                logger.info(`Sending message to queue: ${message}`);
+                channel.sendToQueue(queueName, Buffer.from(message));
+            }
+
+            // Close the channel and connection
+            await channel.close();
+            await connection.close();
+
+            res.status(200).json({ message: 'Video upload queued successfully' });
+        } catch (error) {
+            logger.error('Error processing video upload:', error);
+            res.status(500).json({ message: 'Internal Server Error' });
+        }
+    }
+);
+
+
+
+app.get("/api/presignedURL", (req, res) => {
+    let { fileName } = req.query;
+    if(fileName == undefined){
+      return res.status(400).json({"message": "fileName is a required parameter and is missing"})
+    }
+
+    const randomPrefix = randomPrefixGenerator();
+    fileName = randomPrefix + '_' + fileName;
+    console.log(fileName)
+
+
+    minioClient.presignedPutObject('input-video', fileName, (err, url) => {
+      if (err) throw err;
+      return res.status(200).json({"message": "success", url, fileName})
+  });
+});
 
 app.listen(PORT, () => {
     console.log(`Server Listening on port ${PORT}`);
