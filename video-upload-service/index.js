@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 const express = require('express')
 const amqp = require('amqplib/callback_api');
 const app = express();
@@ -9,11 +11,11 @@ const PORT = process.env.PORT
 
 const Minio = require('minio');
 const minioClient = new Minio.Client({
-    endPoint: process.env.MINIO_ENDPOINT,
-    port: process.env.MINIO_PORT,
+    endPoint: process.env.MINIO_ENDPOINT || "localhost",
+    port:  Number(process.env.MINIO_PORT) || 9000,
     useSSL: false,
-    accessKey: process.env.MINIO_ACCESS_KEY,
-    secretKey: process.env.MINIO_SECRET_KEY
+    accessKey: process.env.MINIO_ACCESS_KEY || "",
+    secretKey: process.env.MINIO_SECRET_KEY || ""
 })
 
 const resolutions= ['480p', '720p', '1080p']
